@@ -1,0 +1,300 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== USER & AUTH ==========
+
+enum Role {
+  CANDIDATE
+  RECRUITER
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  role          Role           @default(CANDIDATE)
+  status        AccountStatus  @default(ACTIVE)
+  avatarUrl     String?
+  emailVerified Boolean        @default(false)
+  rememberMe    Boolean        @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  candidateProfile   CandidateProfile?
+  recruiterProfile   RecruiterProfile?
+  interviews         Interview[]          @relation("CandidateInterviews")
+  recruiterInterviews Interview[]         @relation("RecruiterInterviews")
+  notifications      Notification[]
+  achievements       Achievement[]
+  interviewResults   InterviewResult[]
+  sentInvitations    Invitation[]         @relation("SenderInvitations")
+  createdTemplates   InterviewTemplate[]  @relation("TemplateCreator")
+
+  @@map("users")
+}
+
+model CandidateProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone               String?
+  location            String?
+  title               String?
+  bio                 String?
+  resumeUrl           String?
+  resumeScore         Int?
+  profileCompletion   Int      @default(0)
+  portfolioUrl        String?
+  githubUrl           String?
+  linkedinUrl         String?
+  twitterUrl          String?
+  company             String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  skills         Skill[]
+  certifications Certification[]
+  workExperience WorkExperience[]
+
+  @@map("candidate_profiles")
+}
+
+model Skill {
+  id        String   @id @default(uuid())
+  profileId String
+  profile   CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name      String
+  level     String   @default("Intermediate") // Beginner, Intermediate, Advanced, Expert
+  endorsements Int   @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("skills")
+}
+
+model Certification {
+  id             String   @id @default(uuid())
+  profileId      String
+  profile        CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name           String
+  issuer         String
+  issueDate      DateTime?
+  expiryDate     DateTime?
+  credentialUrl  String?
+  createdAt      DateTime @default(now())
+
+  @@map("certifications")
+}
+
+model WorkExperience {
+  id          String   @id @default(uuid())
+  profileId   String
+  profile     CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company     String
+  role        String
+  startDate   DateTime
+  endDate     DateTime?
+  current     Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@map("work_experiences")
+}
+
+model RecruiterProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   String?
+  position  String?
+  phone     String?
+  bio       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("recruiter_profiles")
+}
+
+// ========== INTERVIEW TEMPLATES ==========
+
+model InterviewTemplate {
+  id          String   @id @default(uuid())
+  recruiterId String
+  recruiter   User     @relation("TemplateCreator", fields: [recruiterId], references: [id], onDelete: Cascade)
+  name        String
+  category    String?
+  difficulty  String   @default("Medium") // Easy, Medium, Hard, Expert
+  duration    Int      @default(60) // minutes
+  status      String   @default("active") // active, draft, archived
+  usageCount  Int      @default(0)
+  rating      Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions  TemplateQuestion[]
+  interviews Interview[]
+
+  @@map("interview_templates")
+}
+
+model TemplateQuestion {
+  id         String   @id @default(uuid())
+  templateId String
+  template   InterviewTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  question   String
+  type       String   @default("coding") // coding, behavioral, system_design, algorithm, custom
+  difficulty String   @default("Medium")
+  timeLimit  Int?     // minutes
+  orderIndex Int      @default(0)
+  skills     String[] // array of skill tags
+  createdAt  DateTime @default(now())
+
+  @@map("template_questions")
+}
+
+// ========== INTERVIEWS ==========
+
+enum InterviewStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  PAUSED
+}
+
+model Interview {
+  id            String          @id @default(uuid())
+  candidateId   String
+  candidate     User            @relation("CandidateInterviews", fields: [candidateId], references: [id], onDelete: Cascade)
+  recruiterId   String?
+  recruiter     User?           @relation("RecruiterInterviews", fields: [recruiterId], references: [id])
+  templateId    String?
+  template      InterviewTemplate? @relation(fields: [templateId], references: [id])
+  status        InterviewStatus @default(SCHEDULED)
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  duration      Int?            // actual duration in seconds
+  pauseCount    Int             @default(0)
+  totalPauseDuration Int        @default(0)
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  answers     InterviewAnswer[]
+  result      InterviewResult?
+  invitation  Invitation?
+
+  @@map("interviews")
+}
+
+model InterviewAnswer {
+  id          String   @id @default(uuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  question    String
+  answer      String?
+  code        String?
+  score       Int?
+  feedback    String?
+  timeSpent   Int?     // seconds
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@map("interview_answers")
+}
+
+model InterviewResult {
+  id              String   @id @default(uuid())
+  interviewId     String   @unique
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+  overallScore    Int      @default(0)
+  technicalScore  Int      @default(0)
+  communicationScore Int   @default(0)
+  confidenceScore Int      @default(0)
+  aiFeedback      String?
+  strengths       String[] // array of strengths
+  weaknesses      String[] // array of weaknesses
+  recommendations String[]
+  reportUrl       String?
+  createdAt       DateTime @default(now())
+
+  @@map("interview_results")
+}
+
+// ========== INVITATIONS ==========
+
+model Invitation {
+  id          String   @id @default(uuid())
+  senderId    String
+  sender      User     @relation("SenderInvitations", fields: [senderId], references: [id])
+  email       String
+  interviewId String?  @unique
+  interview   Interview? @relation(fields: [interviewId], references: [id])
+  status      String   @default("pending") // pending, accepted, declined, expired
+  token       String   @unique @default(uuid())
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@map("invitations")
+}
+
+// ========== NOTIFICATIONS & ACHIEVEMENTS ==========
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // interview_scheduled, result_ready, achievement, system, etc.
+  title     String
+  message   String?
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model Achievement {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  icon        String?
+  earnedAt    DateTime @default(now())
+
+  @@map("achievements")
+}
+
+// ========== SYSTEM LOGS ==========
+
+model SystemLog {
+  id        String   @id @default(uuid())
+  action    String
+  userId    String?
+  details   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@map("system_logs")
+}
