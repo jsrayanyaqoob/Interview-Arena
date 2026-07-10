@@ -57,8 +57,8 @@ router.post('/register', [
         name,
         role: finalRole,
         emailVerified: false,
-        candidateProfile: role === 'CANDIDATE' ? { create: {} } : undefined,
-        recruiterProfile: role === 'RECRUITER' ? { create: { company: req.body.company || '', position: '' } } : undefined,
+        candidateProfile: finalRole === 'CANDIDATE' ? { create: {} } : undefined,
+        recruiterProfile: finalRole === 'RECRUITER' ? { create: { company: req.body.company || '', position: '' } } : undefined,
       },
       select: {
         id: true,
