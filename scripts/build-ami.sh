@@ -9,6 +9,10 @@
 #   - AWS CLI configured with appropriate credentials
 #   - Packer >= 1.9.0 installed
 #   - jq installed
+#
+# Notes:
+#   - Must be run from the project root (one level above scripts/)
+#   - Ensure packer/scripts/common.sh is executable before running
 # =============================================================================
 # This replaces the old build-and-push.sh (Docker + ECR) with
 # Packer-based AMI building for EC2 deployment.
@@ -17,7 +21,7 @@
 set -euo pipefail
 
 ENVIRONMENT="${1:-dev}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")\" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Colors

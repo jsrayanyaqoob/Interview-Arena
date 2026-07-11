@@ -4,7 +4,7 @@
 # This workflow:
 #   1. Installs dependencies & runs ESLint
 #   2. Runs tests (if any exist)
-#   3. Builds the Next.js application
+#   3. Builds the Next.js application (CI verification)
 #   4. SSHes into the EC2 instance
 #   5. Pulls latest code, installs deps, builds, restarts PM2
 #
@@ -72,48 +72,49 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: |
-            ${{ env.FRONTEND_DIR }}/package-lock.json
-            ${{ env.BACKEND_DIR }}/package-lock.json
+            frontend/package-lock.json
+            backend/package-lock.json
 
       # ─── Install Dependencies ──────────────────────────────────────────────
       - name: Install frontend dependencies
-        working-directory: ${{ env.FRONTEND_DIR }}
+        working-directory: frontend
         run: npm ci
 
       - name: Install backend dependencies
-        working-directory: ${{ env.BACKEND_DIR }}
+        working-directory: backend
         run: npm ci
 
       # ─── Run ESLint ────────────────────────────────────────────────────────
       - name: Lint frontend
-        working-directory: ${{ env.FRONTEND_DIR }}
+        working-directory: frontend
         run: npm run lint
         continue-on-error: true
 
       # ─── Run Tests (if present) ────────────────────────────────────────────
       - name: Run frontend tests
-        working-directory: ${{ env.FRONTEND_DIR }}
+        working-directory: frontend
         run: npx jest --passWithNoTests --no-coverage 2>/dev/null || echo "No tests found"
 
       - name: Run backend tests
-        working-directory: ${{ env.BACKEND_DIR }}
+        working-directory: backend
         run: npm test 2>/dev/null || echo "No tests defined"
 
       # ─── Build Next.js Application (CI verification) ──────────────────────
       - name: Build Next.js application
-        working-directory: ${{ env.FRONTEND_DIR }}
+        working-directory: frontend
         run: npm run build
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api' }}
 
       # ─── Deploy to EC2 via SSH ─────────────────────────────────────────────
       - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.2.2
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
+          script_timeout: 300s
           script: |
             set -e
 
@@ -153,58 +154,33 @@ jobs:
 
             # ─── Restart PM2 processes ───────────────────────────────────────
             echo "[5/5] Restarting PM2..."
-            cd /app
-
-            # Create/update PM2 ecosystem config if it doesn't exist
-            if [ ! -f ecosystem.config.js ]; then
-              cat > ecosystem.config.js << 'PM2EOF'
-            module.exports = {
-              apps: [
-                {
-                  name: 'interview-arena-backend',
-                  cwd: '/app/backend',
-                  script: 'src/server.js',
-                  interpreter: 'node',
-                  env: {
-                    NODE_ENV: 'production',
-                    PORT: 5000,
-                  },
-                  instances: 1,
-                  exec_mode: 'fork',
-                  max_memory_restart: '500M',
-                  error_file: '/app/logs/backend-error.log',
-                  out_file: '/app/logs/backend-out.log',
-                  merge_logs: true,
-                  log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-                },
-                {
-                  name: 'interview-arena-frontend',
-                  cwd: '/app/frontend',
-                  script: 'node_modules/next/dist/bin/next',
-                  args: 'start',
-                  interpreter: 'node',
-                  env: {
-                    NODE_ENV: 'production',
-                    PORT: 3000,
-                  },
-                  instances: 1,
-                  exec_mode: 'fork',
-                  max_memory_restart: '500M',
-                  error_file: '/app/logs/frontend-error.log',
-                  out_file: '/app/logs/frontend-out.log',
-                  merge_logs: true,
-                  log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-                },
-              ],
-            };
-            PM2EOF
-            fi
 
             # Ensure log directory exists
             mkdir -p /app/logs
 
-            # Reload all PM2 processes (zero-downtime if possible)
-            pm2 reload ecosystem.config.js 2>/dev/null || pm2 start ecosystem.config.js
+            # Restart or start backend process
+            if pm2 describe interview-arena-backend > /dev/null 2>&1; then
+              pm2 restart interview-arena-backend --update-env
+              echo "  ✓ Backend restarted"
+            else
+              pm2 start /app/backend/src/server.js \
+                --name interview-arena-backend \
+                --cwd /app/backend \
+                -- -p 5000
+              echo "  ✓ Backend started"
+            fi
+
+            # Restart or start frontend process
+            if pm2 describe interview-arena-frontend > /dev/null 2>&1; then
+              pm2 restart interview-arena-frontend --update-env
+              echo "  ✓ Frontend restarted"
+            else
+              pm2 start /app/frontend/node_modules/next/dist/bin/next \
+                --name interview-arena-frontend \
+                --cwd /app/frontend \
+                -- start -p 3000
+              echo "  ✓ Frontend started"
+            fi
 
             # Save PM2 process list so it persists across reboots
             pm2 save
@@ -212,27 +188,35 @@ jobs:
             echo ""
             echo "=============================================="
             echo "  Deployment complete!"
-            echo "  Frontend: http://$(curl -s http://checkip.amazonaws.com):3000"
-            echo "  Backend:  http://$(curl -s http://checkip.amazonaws.com):5000"
             echo "=============================================="
 
       # ─── Post-Deployment Health Check ──────────────────────────────────────
       - name: Health check
-        run: |
-          echo "Waiting 10s for services to start..."
-          sleep 10
-
-          # Check backend health via SSH
-          ssh -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -i /dev/null \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "curl -sf --max-time 10 http://localhost:5000/api/health 2>/dev/null && echo 'Backend: HEALTHY' || echo 'Backend: unhealthy (may need more time)'"
-
-          echo ""
-          echo "=============================================="
-          echo "  Deploy finished. Monitor PM2 logs with:"
-          echo "  ssh -i <key> ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
-          echo "  pm2 logs interview-arena-frontend"
-          echo "  pm2 logs interview-arena-backend"
-          echo "=============================================="
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            echo "Waiting for services to come online..."
+            for i in 1 2 3 4 5; do
+              BACKEND=$(curl -sf --max-time 5 http://localhost:5000/api/health 2>/dev/null && echo "OK" || echo "FAIL")
+              FRONTEND=$(curl -sf --max-time 5 --output /dev/null http://localhost:3000 2>/dev/null && echo "OK" || echo "FAIL")
+              echo "  Attempt $i/5 — Backend: $BACKEND, Frontend: $FRONTEND"
+              if [ "$BACKEND" = "OK" ] && [ "$FRONTEND" = "OK" ]; then
+                echo ""
+                echo "=============================================="
+                echo "  ✅ All services healthy!"
+                echo "=============================================="
+                exit 0
+              fi
+              sleep 5
+            done
+            echo ""
+            echo "=============================================="
+            echo "  ⚠ Health check timed out. Check logs:"
+            echo "  pm2 logs interview-arena-backend --lines 20"
+            echo "  pm2 logs interview-arena-frontend --lines 20"
+            echo "=============================================="
+            exit 1

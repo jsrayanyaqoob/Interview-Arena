@@ -76,8 +76,8 @@ data "aws_ami" "ubuntu" {
 # ---------------------------------------------------------------------------
 resource "aws_launch_template" "main" {
   name                   = "${var.project_name}-${var.environment}-lt"
-  description            = "Launch template for ${var.project_name} ${var.environment} EC2 instances"
-  image_id               = data.aws_ami.ubuntu.id
+  description            = "Launch template for ${var.project_name} ${var.environment} EC2 instances (AMI: ${var.backend_ami_id != null ? "Packer-built" : "Ubuntu auto-discovered"})"
+  image_id               = var.backend_ami_id != null ? var.backend_ami_id : data.aws_ami.ubuntu.id
   instance_type          = var.backend_instance_type
   vpc_security_group_ids = [aws_security_group.ec2.id]
 
