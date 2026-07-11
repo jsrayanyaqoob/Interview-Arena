@@ -67,7 +67,7 @@ export default function TemplateBuilder() {
   };
 
   if (loading) return (
-    <div className="lg:pl-[260px] min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
       <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
     </div>
   );
@@ -78,7 +78,7 @@ export default function TemplateBuilder() {
   };
 
   return (
-    <div className="lg:pl-[260px] min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <div className="p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-in">
           <div>

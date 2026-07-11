@@ -15,6 +15,7 @@ const candidateRoutes = require('./routes/candidate');
 const recruiterRoutes = require('./routes/recruiter');
 const interviewRoutes = require('./routes/interview');
 const adminRoutes = require('./routes/admin');
+const publicUserRoutes = require('./routes/users');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -83,6 +84,7 @@ app.use('/api/candidate', candidateRoutes);
 app.use('/api/recruiter', recruiterRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/users', publicUserRoutes);
 
 // ========== ERROR HANDLING ==========
 

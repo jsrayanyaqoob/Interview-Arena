@@ -1,92 +1,48 @@
 'use client';
 
 import Link from 'next/link';
-import { Sparkles, Code2, MessageCircle, Share2, Mail } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Sparkles } from 'lucide-react';
 
 export default function Footer() {
+  const pathname = usePathname();
+
+  // Only show on landing page and sign-in
+  const isLanding = pathname === '/' || pathname === '/sign-in';
+
+  if (!isLanding) return null;
+
   return (
-    <footer className="bg-slate-900 dark:bg-slate-950 border-t border-slate-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
-          {/* Brand */}
-          <div className="lg:col-span-2">
-            <Link href="/" className="flex items-center gap-2.5 group mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg">
-                <Sparkles className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-lg font-bold text-white">
-                Interview Arena
-              </span>
-            </Link>
-            <p className="text-slate-400 text-sm max-w-md leading-relaxed">
-              Revolutionizing technical hiring with AI-powered interviews. 
-              Assess candidates fairly, efficiently, and at scale with our 
-              intelligent interview platform.
-            </p>
-            <div className="flex items-center gap-3 mt-6">
-              <a href="#" className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all">
-                <Code2 className="w-4 h-4" />
-              </a>
-              <a href="#" className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all">
-                <Share2 className="w-4 h-4" />
-              </a>
-              <a href="#" className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all">
-                <MessageCircle className="w-4 h-4" />
-              </a>
-              <a href="#" className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all">
-                <Mail className="w-4 h-4" />
-              </a>
+    <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
             </div>
-          </div>
+            <span className="text-sm font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Interview Arena
+            </span>
+          </Link>
 
-          {/* Product */}
-          <div>
-            <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
-              Product
-            </h3>
-            <ul className="space-y-3">
-              {['Features', 'Pricing', 'Integrations', 'Changelog', 'Roadmap'].map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">
-                    {item}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Company */}
-          <div>
-            <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
-              Company
-            </h3>
-            <ul className="space-y-3">
-              {['About', 'Blog', 'Careers', 'Contact', 'Privacy Policy'].map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">
-                    {item}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-12 pt-8 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-slate-500">
-            &copy; {new Date().getFullYear()} Interview Arena AI. All rights reserved.
-          </p>
           <div className="flex items-center gap-6">
-            <a href="#" className="text-xs text-slate-500 hover:text-slate-400 transition-colors">
-              Terms of Service
+            <Link href="/#features" className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+              Features
+            </Link>
+            <Link href="/#pricing" className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+              Pricing
+            </Link>
+            <a href="#" className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+              Privacy
             </a>
-            <a href="#" className="text-xs text-slate-500 hover:text-slate-400 transition-colors">
-              Privacy Policy
-            </a>
-            <a href="#" className="text-xs text-slate-500 hover:text-slate-400 transition-colors">
-              Cookie Policy
+            <a href="#" className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+              Terms
             </a>
           </div>
+
+          <p className="text-xs text-slate-400">
+            &copy; {new Date().getFullYear()} Interview Arena AI
+          </p>
         </div>
       </div>
     </footer>

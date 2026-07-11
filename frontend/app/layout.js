@@ -30,10 +30,12 @@ export default function RootLayout({ children }) {
       <body className="min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans">
         <AuthProvider>
           <Navbar />
-          <Sidebar />
-          <main className="min-h-screen">
-            {children}
-          </main>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="flex-1 min-w-0">
+              {children}
+            </main>
+          </div>
           <Footer />
         </AuthProvider>
       </body>

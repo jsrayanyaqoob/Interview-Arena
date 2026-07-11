@@ -33,7 +33,7 @@ export default function CandidateDashboard() {
 
   if (loading) {
     return (
-      <div className="lg:pl-[260px] min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mx-auto mb-4" />
           <p className="text-slate-500">Loading your dashboard...</p>
@@ -44,7 +44,7 @@ export default function CandidateDashboard() {
 
   if (error) {
     return (
-      <div className="lg:pl-[260px] min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-500 mb-2">Failed to load dashboard</p>
           <p className="text-sm text-slate-400">{error}</p>
@@ -63,7 +63,7 @@ export default function CandidateDashboard() {
   ];
 
   return (
-    <div className="lg:pl-[260px] min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <div className="p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8">
         {/* Header */}
         <div className="mb-8 animate-fade-in">

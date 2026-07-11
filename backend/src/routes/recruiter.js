@@ -97,8 +97,10 @@ router.get('/dashboard', async (req, res, next) => {
         orderBy: { createdAt: 'desc' },
         take: 5,
       }),
-    ]);      const pipelineData = [
-        { stage: 'Applied', count: (pipeline.find(p => p.status === 'SCHEDULED')?._count || 0) + 48, color: 'bg-slate-400' },
+    ]);
+
+    const pipelineData = [
+      { stage: 'Applied', count: (pipeline.find(p => p.status === 'SCHEDULED')?._count || 0) + 48, color: 'bg-slate-400' },
       { stage: 'Screened', count: 32, color: 'bg-blue-400' },
       { stage: 'AI Interview', count: (pipeline.find(p => p.status === 'IN_PROGRESS')?._count || 0) + 18, color: 'bg-indigo-500' },
       { stage: 'Technical', count: 10, color: 'bg-purple-500' },

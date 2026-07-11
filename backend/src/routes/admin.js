@@ -54,7 +54,6 @@ router.get('/dashboard', async (req, res, next) => {
       prisma.systemLog.findMany({
         orderBy: { createdAt: 'desc' },
         take: 10,
-        include: { user: { select: { name: true } } },
       }),
       // System health metrics (simulated)
       [
@@ -84,7 +83,7 @@ router.get('/dashboard', async (req, res, next) => {
       },
       recentActivities: recentActivities.map(a => ({
         id: a.id,
-        user: a.user?.name || 'System',
+        user: a.userId || 'System',
         action: a.action,
         details: a.details,
         time: a.createdAt,
@@ -372,7 +371,6 @@ router.get('/logs', async (req, res, next) => {
         orderBy: { createdAt: 'desc' },
         skip: pagination.skip,
         take: pagination.take,
-        include: { user: { select: { name: true, email: true } } },
       }),
       prisma.systemLog.count(),
     ]);

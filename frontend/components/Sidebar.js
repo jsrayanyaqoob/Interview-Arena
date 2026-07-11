@@ -37,8 +37,8 @@ const roleConfig = {
     links: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-      { href: '/recruiter/dashboard', label: 'Recruiters', icon: Briefcase },
-      { href: '/candidate/dashboard', label: 'Candidates', icon: Users },
+      { href: '/users/recruiters', label: 'Recruiters', icon: Briefcase },
+      { href: '/users/candidates', label: 'Candidates', icon: Users },
     ]
   }
 };
@@ -51,14 +51,15 @@ export default function Sidebar() {
   // Don't show sidebar on landing page or sign-in
   const isDashboard = pathname.startsWith('/candidate') ||
     pathname.startsWith('/recruiter') ||
-    pathname.startsWith('/admin');
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/users');
 
   if (!isDashboard) return null;
 
   // Determine current role from pathname
   const role = pathname.startsWith('/recruiter')
     ? 'recruiter'
-    : pathname.startsWith('/admin')
+    : pathname.startsWith('/admin') || pathname.startsWith('/users')
     ? 'admin'
     : 'candidate';
 
@@ -84,10 +85,13 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col ${
+        className={`${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0 lg:relative lg:flex-shrink-0 lg:min-h-screen
+          fixed top-0 left-0 z-40 h-full
+          bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800
+          transition-all duration-300 flex flex-col ${
           collapsed ? 'w-[72px]' : 'w-[260px]'
-        } ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Logo */}
