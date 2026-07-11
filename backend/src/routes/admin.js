@@ -7,8 +7,18 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { paginateResults, paginatedResponse } = require('../utils/helpers');
 const { logger } = require('../utils/logger');
 
+const ADMIN_EMAIL = 'rayanyaqoob83@gmail.com';
+
 router.use(authenticate);
 router.use(authorize('ADMIN'));
+
+// Only the designated admin email can access admin routes
+router.use((req, res, next) => {
+  if (req.user.email !== ADMIN_EMAIL) {
+    return res.status(403).json({ error: 'Access denied. Admin privileges restricted.' });
+  }
+  next();
+});
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);

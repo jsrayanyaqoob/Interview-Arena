@@ -44,46 +44,74 @@ async function initTables() {
       KeySchema: [{ AttributeName: 'cacheKey', KeyType: 'HASH' }],
       AttributeDefinitions: [{ AttributeName: 'cacheKey', AttributeType: 'S' }],
       BillingMode: 'PAY_PER_REQUEST',
-      TimeToLiveSpecification: {
-        AttributeName: 'ttl',
-        Enabled: true,
-      },
     },
   ];
 
   for (const tableParams of tables) {
     try {
       const existing = await dynamoDBClient.listTables().promise();
+
       if (!existing.TableNames.includes(tableParams.TableName)) {
         await dynamoDBClient.createTable(tableParams).promise();
+
         console.log(`DynamoDB table created: ${tableParams.TableName}`);
+
+        // Enable TTL only for cache table
+        if (tableParams.TableName === TABLES.CACHE) {
+          try {
+            await dynamoDBClient
+              .updateTimeToLive({
+                TableName: TABLES.CACHE,
+                TimeToLiveSpecification: {
+                  AttributeName: 'ttl',
+                  Enabled: true,
+                },
+              })
+              .promise();
+
+            console.log('TTL enabled for api_cache table.');
+          } catch (ttlError) {
+            console.warn(
+              `Could not enable TTL: ${ttlError.message}`
+            );
+          }
+        }
       }
     } catch (error) {
-      // If DynamoDB is not available (e.g., local development without AWS creds),
-      // just log a warning and continue
-      if (error.code === 'CredentialsError' || error.code === 'NetworkingError') {
-        console.warn(`DynamoDB not available: ${error.message}. Running without DynamoDB.`);
+      if (
+        error.code === 'CredentialsError' ||
+        error.code === 'NetworkingError'
+      ) {
+        console.warn(
+          `DynamoDB not available: ${error.message}. Running without DynamoDB.`
+        );
         break;
       }
-      console.warn(`DynamoDB table check failed for ${tableParams.TableName}: ${error.message}`);
+
+      console.warn(
+        `DynamoDB table check failed for ${tableParams.TableName}: ${error.message}`
+      );
     }
   }
 }
 
 /**
- * Store interview session data in DynamoDB
+ * Store interview session data
  */
 async function storeInterviewSession(sessionId, data) {
   try {
-    await dynamoDB.put({
-      TableName: TABLES.INTERVIEW_SESSIONS,
-      Item: {
-        sessionId,
-        ...data,
-        createdAt: new Date().toISOString(),
-        ttl: Math.floor(Date.now() / 1000) + 86400 * 30, // 30 days TTL
-      },
-    }).promise();
+    await dynamoDB
+      .put({
+        TableName: TABLES.INTERVIEW_SESSIONS,
+        Item: {
+          sessionId,
+          ...data,
+          createdAt: new Date().toISOString(),
+          ttl: Math.floor(Date.now() / 1000) + 86400 * 30,
+        },
+      })
+      .promise();
+
     return true;
   } catch (error) {
     console.error('DynamoDB storeInterviewSession error:', error.message);
@@ -92,14 +120,17 @@ async function storeInterviewSession(sessionId, data) {
 }
 
 /**
- * Get interview session from DynamoDB
+ * Get interview session
  */
 async function getInterviewSession(sessionId) {
   try {
-    const result = await dynamoDB.get({
-      TableName: TABLES.INTERVIEW_SESSIONS,
-      Key: { sessionId },
-    }).promise();
+    const result = await dynamoDB
+      .get({
+        TableName: TABLES.INTERVIEW_SESSIONS,
+        Key: { sessionId },
+      })
+      .promise();
+
     return result.Item || null;
   } catch (error) {
     console.error('DynamoDB getInterviewSession error:', error.message);
@@ -108,19 +139,22 @@ async function getInterviewSession(sessionId) {
 }
 
 /**
- * Record an analytics event in DynamoDB
+ * Record analytics event
  */
 async function recordAnalyticsEvent(eventType, data) {
   try {
-    await dynamoDB.put({
-      TableName: TABLES.ANALYTICS_EVENTS,
-      Item: {
-        eventType,
-        timestamp: new Date().toISOString(),
-        ...data,
-        ttl: Math.floor(Date.now() / 1000) + 86400 * 90, // 90 days TTL
-      },
-    }).promise();
+    await dynamoDB
+      .put({
+        TableName: TABLES.ANALYTICS_EVENTS,
+        Item: {
+          eventType,
+          timestamp: new Date().toISOString(),
+          ...data,
+          ttl: Math.floor(Date.now() / 1000) + 86400 * 90,
+        },
+      })
+      .promise();
+
     return true;
   } catch (error) {
     console.error('DynamoDB recordAnalyticsEvent error:', error.message);
@@ -129,22 +163,28 @@ async function recordAnalyticsEvent(eventType, data) {
 }
 
 /**
- * Get analytics events by type with time range
+ * Get analytics events
  */
 async function getAnalyticsEvents(eventType, startTime, endTime) {
   try {
-    const params = {
-      TableName: TABLES.ANALYTICS_EVENTS,
-      KeyConditionExpression: 'eventType = :eventType AND #ts BETWEEN :start AND :end',
-      ExpressionAttributeNames: { '#ts': 'timestamp' },
-      ExpressionAttributeValues: {
-        ':eventType': eventType,
-        ':start': startTime || new Date(Date.now() - 86400000 * 30).toISOString(),
-        ':end': endTime || new Date().toISOString(),
-      },
-    };
+    const result = await dynamoDB
+      .query({
+        TableName: TABLES.ANALYTICS_EVENTS,
+        KeyConditionExpression:
+          'eventType = :eventType AND #ts BETWEEN :start AND :end',
+        ExpressionAttributeNames: {
+          '#ts': 'timestamp',
+        },
+        ExpressionAttributeValues: {
+          ':eventType': eventType,
+          ':start':
+            startTime ||
+            new Date(Date.now() - 30 * 86400000).toISOString(),
+          ':end': endTime || new Date().toISOString(),
+        },
+      })
+      .promise();
 
-    const result = await dynamoDB.query(params).promise();
     return result.Items || [];
   } catch (error) {
     console.error('DynamoDB getAnalyticsEvents error:', error.message);
@@ -153,19 +193,22 @@ async function getAnalyticsEvents(eventType, startTime, endTime) {
 }
 
 /**
- * Cache data in DynamoDB with TTL
+ * Cache data
  */
 async function cacheSet(key, value, ttlSeconds = 300) {
   try {
-    await dynamoDB.put({
-      TableName: TABLES.CACHE,
-      Item: {
-        cacheKey: key,
-        value: JSON.stringify(value),
-        createdAt: new Date().toISOString(),
-        ttl: Math.floor(Date.now() / 1000) + ttlSeconds,
-      },
-    }).promise();
+    await dynamoDB
+      .put({
+        TableName: TABLES.CACHE,
+        Item: {
+          cacheKey: key,
+          value: JSON.stringify(value),
+          createdAt: new Date().toISOString(),
+          ttl: Math.floor(Date.now() / 1000) + ttlSeconds,
+        },
+      })
+      .promise();
+
     return true;
   } catch (error) {
     console.error('DynamoDB cacheSet error:', error.message);
@@ -174,19 +217,23 @@ async function cacheSet(key, value, ttlSeconds = 300) {
 }
 
 /**
- * Get cached data from DynamoDB
+ * Get cached data
  */
 async function cacheGet(key) {
   try {
-    const result = await dynamoDB.get({
-      TableName: TABLES.CACHE,
-      Key: { cacheKey: key },
-    }).promise();
+    const result = await dynamoDB
+      .get({
+        TableName: TABLES.CACHE,
+        Key: { cacheKey: key },
+      })
+      .promise();
 
     if (!result.Item) return null;
 
-    // Check if expired (DynamoDB TTL may not have cleaned it yet)
-    if (result.Item.ttl && Math.floor(Date.now() / 1000) > result.Item.ttl) {
+    if (
+      result.Item.ttl &&
+      Math.floor(Date.now() / 1000) > result.Item.ttl
+    ) {
       return null;
     }
 

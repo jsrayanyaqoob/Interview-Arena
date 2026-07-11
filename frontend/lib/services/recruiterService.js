@@ -42,4 +42,10 @@ export const recruiterService = {
 
   getAnalytics: (params = {}) =>
     api.get('/recruiter/analytics', { params }).then(r => r.data),
+
+  getAnalyticsJobs: (params = {}) =>
+    api.get('/recruiter/analytics/jobs', { params }).then(r => r.data),
+
+  getAllCandidates: (params = {}) =>
+    api.get('/recruiter/all-candidates', { params }).then(r => r.data),
 };

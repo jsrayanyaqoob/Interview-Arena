@@ -61,5 +61,6 @@ export const config = {
     '/recruiter/:path*',
     '/admin/:path*',
     '/users/:path*',
+    '/settings/:path*',
   ],
 };

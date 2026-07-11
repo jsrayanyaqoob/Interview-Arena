@@ -1,0 +1,311 @@
+# =============================================================================
+# Interview Arena AI - CI/CD Pipeline (AMI-based EC2)
+# =============================================================================
+# This workflow:
+#   1. Builds and tests both frontend and backend
+#   2. Builds AMIs with Packer (replaces Docker + ECR)
+#   3. Runs terraform apply (provisions/updates EC2 infrastructure)
+#   4. Triggers ASG instance refresh for rolling deployment
+# =============================================================================
+
+name: Deploy Interview Arena
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'images/**'
+      - '.gitignore'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'images/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: terraform
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ===========================================================================
+  # Job 1: Test & Lint
+  # ===========================================================================
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: interviewarena_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/interviewarena_test
+
+      - name: Run Prisma Migrate
+        working-directory: backend
+        run: npx prisma db push
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/interviewarena_test
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5000/api
+
+      - name: Lint Frontend
+        working-directory: frontend
+        run: npm run lint || true
+
+  # ===========================================================================
+  # Job 2: Terraform Plan (PRs) / Apply (main)
+  # ===========================================================================
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    needs: [test]
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan (PR)
+        if: github.event_name == 'pull_request'
+        run: terraform plan -var-file="env/dev.tfvars" -no-color
+
+      - name: Terraform Apply (main push)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -var-file="env/prod.tfvars" -auto-approve
+        env:
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_jwt_refresh_secret: ${{ secrets.JWT_REFRESH_SECRET }}
+          TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
+
+  # ===========================================================================
+  # Job 3: Build AMIs with Packer (replaces Docker build + ECR push)
+  # ===========================================================================
+  build-ami:
+    name: Build AMIs with Packer
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        id: setup
+        with:
+          version: "latest"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set environment
+        id: set-env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+
+      - name: Validate Backend Packer Template
+        run: |
+          packer validate \
+            -var "environment=${{ steps.set-env.outputs.environment }}" \
+            packer/backend.pkr.hcl
+
+      - name: Validate Frontend Packer Template
+        run: |
+          packer validate \
+            -var "environment=${{ steps.set-env.outputs.environment }}" \
+            packer/frontend.pkr.hcl
+
+      - name: Build Backend AMI
+        run: |
+          packer build \
+            -var "environment=${{ steps.set-env.outputs.environment }}" \
+            -color=false \
+            packer/backend.pkr.hcl
+
+      - name: Build Frontend AMI
+        run: |
+          packer build \
+            -var "environment=${{ steps.set-env.outputs.environment }}" \
+            -color=false \
+            packer/frontend.pkr.hcl
+
+  # ===========================================================================
+  # Job 4: Deploy to EC2 (trigger ASG instance refresh)
+  # ===========================================================================
+  deploy:
+    name: Deploy to EC2 (ASG Instance Refresh)
+    runs-on: ubuntu-latest
+    needs: [terraform, build-ami]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set environment
+        id: set-env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "backend_asg=interview-arena-${ENV}-backend-asg" >> $GITHUB_OUTPUT
+          echo "frontend_asg=interview-arena-${ENV}-frontend-asg" >> $GITHUB_OUTPUT
+
+      - name: Start Backend ASG Instance Refresh
+        id: refresh-backend
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ${{ steps.set-env.outputs.backend_asg }} \
+            --strategy Rolling \
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 120}' \
+            --region ${{ env.AWS_REGION }} \
+            --query 'InstanceRefreshId' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$REFRESH_ID" ]; then
+            echo "Backend instance refresh started: $REFRESH_ID"
+            echo "refresh_id=$REFRESH_ID" >> $GITHUB_OUTPUT
+          else
+            echo "Backend ASG not found. Skipping refresh."
+            echo "refresh_id=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Start Frontend ASG Instance Refresh
+        id: refresh-frontend
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ${{ steps.set-env.outputs.frontend_asg }} \
+            --strategy Rolling \
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 120}' \
+            --region ${{ env.AWS_REGION }} \
+            --query 'InstanceRefreshId' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$REFRESH_ID" ]; then
+            echo "Frontend instance refresh started: $REFRESH_ID"
+            echo "refresh_id=$REFRESH_ID" >> $GITHUB_OUTPUT
+          else
+            echo "Frontend ASG not found. Skipping refresh."
+            echo "refresh_id=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for Backend Refresh
+        if: steps.refresh-backend.outputs.refresh_id != ''
+        run: |
+          echo "Waiting for backend instance refresh to complete..."
+          aws autoscaling wait instance-refresh-complete \
+            --auto-scaling-group-name ${{ steps.set-env.outputs.backend_asg }} \
+            --region ${{ env.AWS_REGION }}
+          echo "Backend instance refresh complete!"
+
+      - name: Wait for Frontend Refresh
+        if: steps.refresh-frontend.outputs.refresh_id != ''
+        run: |
+          echo "Waiting for frontend instance refresh to complete..."
+          aws autoscaling wait instance-refresh-complete \
+            --auto-scaling-group-name ${{ steps.set-env.outputs.frontend_asg }} \
+            --region ${{ env.AWS_REGION }}
+          echo "Frontend instance refresh complete!"
+
+      - name: Health Check
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names "interview-arena-${{ steps.set-env.outputs.environment }}-alb" \
+            --query 'LoadBalancers[0].DNSName' \
+            --region ${{ env.AWS_REGION }} \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$ALB_DNS" ]; then
+            echo "Waiting 10s for ALB to register new instances..."
+            sleep 10
+            curl -sf --max-time 30 "http://${ALB_DNS}/api/health" && \
+              echo "Backend healthy!" || \
+              echo "Health check pending... (may need more time for new instances to register)"
+          else
+            echo "ALB not yet available. Skipping health check."
+          fi

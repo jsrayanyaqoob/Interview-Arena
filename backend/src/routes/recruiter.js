@@ -481,6 +481,182 @@ router.post('/schedule', [
   }
 });
 
+// ========== ALL CANDIDATES (with recruiter interview context) ==========
+router.get('/all-candidates', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get all active candidates
+    const where = { role: 'CANDIDATE', status: 'ACTIVE' };
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Get interviews for this recruiter to check which candidates they've interacted with
+    const recruiterInterviews = await prisma.interview.findMany({
+      where: { recruiterId: req.user.id },
+      select: {
+        candidateId: true,
+        status: true,
+        templateId: true,
+        result: { select: { overallScore: true, technicalScore: true, communicationScore: true } },
+        template: { select: { name: true } },
+      },
+    });
+
+    // Build a map of candidateId -> interview data
+    const interviewMap = {};
+    recruiterInterviews.forEach(inv => {
+      if (!interviewMap[inv.candidateId]) {
+        interviewMap[inv.candidateId] = [];
+      }
+      interviewMap[inv.candidateId].push({
+        status: inv.status,
+        templateName: inv.template?.name || 'Unknown',
+        score: inv.result?.overallScore || null,
+        technicalScore: inv.result?.technicalScore || null,
+        communicationScore: inv.result?.communicationScore || null,
+      });
+    });
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit),
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          createdAt: true,
+          candidateProfile: {
+            select: {
+              title: true,
+              location: true,
+              skills: { select: { name: true, level: true } },
+              _count: { select: { skills: true, certifications: true, workExperience: true } },
+            },
+          },
+          _count: { select: { interviews: true } },
+        },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    // Attach interview context from this recruiter
+    const candidatesWithScores = users.map(user => ({
+      ...user,
+      recruiterInterviews: interviewMap[user.id] || [],
+      interviewCount: interviewMap[user.id]?.length || 0,
+      bestScore: interviewMap[user.id]
+        ? Math.max(...interviewMap[user.id].map(i => i.score || 0), 0)
+        : null,
+    }));
+
+    res.json({
+      candidates: candidatesWithScores,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ========== ANALYTICS - PER JOB STATS ==========
+router.get('/analytics/jobs', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    // Get all templates for this recruiter
+    const templates = await prisma.interviewTemplate.findMany({
+      where: { recruiterId: userId },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        difficulty: true,
+        status: true,
+      },
+    });
+
+    // Get all interviews grouped by template
+    const interviews = await prisma.interview.findMany({
+      where: {
+        recruiterId: userId,
+        templateId: { not: null },
+      },
+      include: {
+        result: { select: { overallScore: true } },
+        template: { select: { name: true } },
+      },
+    });
+
+    // Group interviews by template
+    const templateMap = {};
+    templates.forEach(t => {
+      templateMap[t.id] = {
+        job: t.name,
+        category: t.category || 'General',
+        difficulty: t.difficulty,
+        status: t.status,
+        applicants: 0,
+        interviewed: 0,
+        passed: 0,
+        scores: [],
+      };
+    });
+
+    interviews.forEach(inv => {
+      const tid = inv.templateId;
+      if (!templateMap[tid]) {
+        // Template might have been deleted, still track it
+        templateMap[tid] = {
+          job: inv.template?.name || 'Unknown Template',
+          category: 'Other',
+          difficulty: 'Unknown',
+          status: 'inactive',
+          applicants: 0,
+          interviewed: 0,
+          passed: 0,
+          scores: [],
+        };
+      }
+      templateMap[tid].applicants++;
+      if (inv.status === 'COMPLETED' || inv.status === 'IN_PROGRESS') {
+        templateMap[tid].interviewed++;
+      }
+      if (inv.status === 'COMPLETED' && inv.result && inv.result.overallScore >= 70) {
+        templateMap[tid].passed++;
+      }
+      if (inv.result && inv.result.overallScore) {
+        templateMap[tid].scores.push(inv.result.overallScore);
+      }
+    });
+
+    const perJobStats = Object.values(templateMap).map(item => ({
+      ...item,
+      avgScore: item.scores.length > 0
+        ? Math.round(item.scores.reduce((a, b) => a + b, 0) / item.scores.length)
+        : 0,
+    })).sort((a, b) => b.applicants - a.applicants);
+
+    res.json({ perJobStats });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ========== HIRING ANALYTICS ==========
 router.get('/analytics', async (req, res, next) => {
   try {

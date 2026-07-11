@@ -9,6 +9,7 @@ import {
   Briefcase, UserCheck, ClipboardList, TrendingUp, Menu, X,
   GraduationCap, Star
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const roleConfig = {
   candidate: {
@@ -27,8 +28,8 @@ const roleConfig = {
     links: [
       { href: '/recruiter/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/recruiter/templates', label: 'Templates', icon: ClipboardList },
-      { href: '/candidate/dashboard', label: 'Candidates', icon: Users },
-      { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+      { href: '/recruiter/candidates', label: 'Candidates', icon: Users },
+      { href: '/recruiter/analytics', label: 'Analytics', icon: BarChart3 },
     ]
   },
   admin: {
@@ -45,6 +46,7 @@ const roleConfig = {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -167,6 +169,7 @@ export default function Sidebar() {
             {!collapsed && 'Settings'}
           </Link>
           <button
+            onClick={logout}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all group ${
               collapsed ? 'justify-center' : ''
             }`}

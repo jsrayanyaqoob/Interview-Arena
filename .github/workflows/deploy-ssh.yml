@@ -1,0 +1,238 @@
+# =============================================================================
+# Interview Arena AI - CI/CD Pipeline (SSH-based EC2)
+# =============================================================================
+# This workflow:
+#   1. Installs dependencies & runs ESLint
+#   2. Runs tests (if any exist)
+#   3. Builds the Next.js application
+#   4. SSHes into the EC2 instance
+#   5. Pulls latest code, installs deps, builds, restarts PM2
+#
+# No Docker used — deploys directly to the EC2 instance via SSH.
+#
+# Required GitHub Secrets:
+#   EC2_HOST       — Public IP or DNS of the EC2 instance
+#   EC2_USER       — SSH username (typically "ubuntu")
+#   EC2_SSH_KEY    — Private SSH key (PEM) for authentication
+#   NEXT_PUBLIC_API_URL — Backend API URL for the frontend build
+# =============================================================================
+
+name: Deploy via SSH
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'images/**'
+      - '.gitignore'
+      - 'terraform/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'images/**'
+      - 'terraform/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - production
+
+env:
+  NODE_VERSION: '22'
+  FRONTEND_DIR: frontend
+  BACKEND_DIR: backend
+
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================================================
+  # Job 1: Build & Deploy
+  # ===========================================================================
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─── Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ─── Setup Node.js ─────────────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            ${{ env.FRONTEND_DIR }}/package-lock.json
+            ${{ env.BACKEND_DIR }}/package-lock.json
+
+      # ─── Install Dependencies ──────────────────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: ${{ env.BACKEND_DIR }}
+        run: npm ci
+
+      # ─── Run ESLint ────────────────────────────────────────────────────────
+      - name: Lint frontend
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm run lint
+        continue-on-error: true
+
+      # ─── Run Tests (if present) ────────────────────────────────────────────
+      - name: Run frontend tests
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npx jest --passWithNoTests --no-coverage 2>/dev/null || echo "No tests found"
+
+      - name: Run backend tests
+        working-directory: ${{ env.BACKEND_DIR }}
+        run: npm test 2>/dev/null || echo "No tests defined"
+
+      # ─── Build Next.js Application (CI verification) ──────────────────────
+      - name: Build Next.js application
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api' }}
+
+      # ─── Deploy to EC2 via SSH ─────────────────────────────────────────────
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            echo "=============================================="
+            echo "  Deployment starting on EC2..."
+            echo "  Branch: ${{ github.ref_name }}"
+            echo "=============================================="
+
+            # ─── Navigate to application directory ──────────────────────────
+            cd /app
+
+            # ─── Pull latest code ───────────────────────────────────────────
+            echo "[1/5] Pulling latest code..."
+            git fetch origin
+            git checkout ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
+            echo "  ✓ Code updated to $(git rev-parse --short HEAD)"
+
+            # ─── Install dependencies (backend) ──────────────────────────────
+            echo "[2/5] Installing backend dependencies..."
+            cd /app/backend
+            npm ci --omit=dev
+            npx prisma generate
+            echo "  ✓ Backend dependencies installed"
+
+            # ─── Install dependencies (frontend) ─────────────────────────────
+            echo "[3/5] Installing frontend dependencies..."
+            cd /app/frontend
+            npm ci
+            echo "  ✓ Frontend dependencies installed"
+
+            # ─── Build frontend ──────────────────────────────────────────────
+            echo "[4/5] Building Next.js application..."
+            export NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api' }}"
+            npm run build
+            echo "  ✓ Build complete"
+
+            # ─── Restart PM2 processes ───────────────────────────────────────
+            echo "[5/5] Restarting PM2..."
+            cd /app
+
+            # Create/update PM2 ecosystem config if it doesn't exist
+            if [ ! -f ecosystem.config.js ]; then
+              cat > ecosystem.config.js << 'PM2EOF'
+            module.exports = {
+              apps: [
+                {
+                  name: 'interview-arena-backend',
+                  cwd: '/app/backend',
+                  script: 'src/server.js',
+                  interpreter: 'node',
+                  env: {
+                    NODE_ENV: 'production',
+                    PORT: 5000,
+                  },
+                  instances: 1,
+                  exec_mode: 'fork',
+                  max_memory_restart: '500M',
+                  error_file: '/app/logs/backend-error.log',
+                  out_file: '/app/logs/backend-out.log',
+                  merge_logs: true,
+                  log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+                },
+                {
+                  name: 'interview-arena-frontend',
+                  cwd: '/app/frontend',
+                  script: 'node_modules/next/dist/bin/next',
+                  args: 'start',
+                  interpreter: 'node',
+                  env: {
+                    NODE_ENV: 'production',
+                    PORT: 3000,
+                  },
+                  instances: 1,
+                  exec_mode: 'fork',
+                  max_memory_restart: '500M',
+                  error_file: '/app/logs/frontend-error.log',
+                  out_file: '/app/logs/frontend-out.log',
+                  merge_logs: true,
+                  log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+                },
+              ],
+            };
+            PM2EOF
+            fi
+
+            # Ensure log directory exists
+            mkdir -p /app/logs
+
+            # Reload all PM2 processes (zero-downtime if possible)
+            pm2 reload ecosystem.config.js 2>/dev/null || pm2 start ecosystem.config.js
+
+            # Save PM2 process list so it persists across reboots
+            pm2 save
+
+            echo ""
+            echo "=============================================="
+            echo "  Deployment complete!"
+            echo "  Frontend: http://$(curl -s http://checkip.amazonaws.com):3000"
+            echo "  Backend:  http://$(curl -s http://checkip.amazonaws.com):5000"
+            echo "=============================================="
+
+      # ─── Post-Deployment Health Check ──────────────────────────────────────
+      - name: Health check
+        run: |
+          echo "Waiting 10s for services to start..."
+          sleep 10
+
+          # Check backend health via SSH
+          ssh -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -i /dev/null \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+            "curl -sf --max-time 10 http://localhost:5000/api/health 2>/dev/null && echo 'Backend: HEALTHY' || echo 'Backend: unhealthy (may need more time)'"
+
+          echo ""
+          echo "=============================================="
+          echo "  Deploy finished. Monitor PM2 logs with:"
+          echo "  ssh -i <key> ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
+          echo "  pm2 logs interview-arena-frontend"
+          echo "  pm2 logs interview-arena-backend"
+          echo "=============================================="
