@@ -24,6 +24,10 @@ yarn-error.log*
 # Packer cache
 .packer/
 
+# Terraform cache (provider binaries are huge - 600MB+)
+terraform-deploy/.terraform/
+terraform-deploy/.terraform.lock.hcl
+
 # Uploaded & generated files
 backend/uploads/
 backend/logs/
