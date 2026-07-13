@@ -169,6 +169,28 @@ function PermissionScreen({ config, onReady }) {
 
   const requestPermissions = async () => {
     setStep('requesting');
+
+    // Check for non-secure context (HTTP instead of HTTPS) — this is the most common
+    // reason getUserMedia fails in production. Browsers block camera/mic access
+    // on non-secure origins for security reasons.
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      setError(
+        'Camera and microphone require a secure HTTPS connection. You are currently accessing this site over HTTP. Please use the HTTPS version of this site, or contact the administrator to enable HTTPS.'
+      );
+      setStep('error');
+      return;
+    }
+
+    // Check if the MediaDevices API is available at all (may be undefined
+    // in non-secure contexts or unsupported browsers)
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError(
+        'Your browser does not support camera/microphone access, or the page is not loaded over a secure connection (HTTPS). Please use a modern browser and ensure you visit this site via HTTPS.'
+      );
+      setStep('error');
+      return;
+    }
+
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: true,
@@ -194,12 +216,28 @@ function PermissionScreen({ config, onReady }) {
         }
       }, 1000);
     } catch (err) {
-      if (err.name === 'NotAllowedError') {
-        setError('Permission denied. Please allow camera and microphone access.');
-      } else if (err.name === 'NotFoundError') {
-        setError('No camera or microphone found.');
+      const name = err?.name || '';
+      const message = err?.message || '';
+
+      if (name === 'NotAllowedError') {
+        setError('Permission denied. Please allow camera and microphone access in your browser settings and try again.');
+      } else if (name === 'NotFoundError') {
+        setError('No camera or microphone found. Please connect a camera and microphone to your device.');
+      } else if (name === 'SecurityError') {
+        setError(
+          'Security error accessing media devices. This usually happens when the page is not served over HTTPS. Please contact the administrator to enable HTTPS.'
+        );
+      } else if (name === 'NotReadableError') {
+        setError('Camera or microphone is already in use by another application. Please close other apps that may be using them.');
+      } else if (name === 'AbortError') {
+        setError('Something went wrong while accessing your media devices. Please try again.');
+      } else if (name === 'TypeError') {
+        setError(
+          'Your browser does not support camera/microphone access, or the page is not loaded over a secure connection (HTTPS). Please use a modern browser with HTTPS.'
+        );
       } else {
-        setError('Failed to access media devices.');
+        // Generic fallback — include the actual error name for debugging
+        setError(`Failed to access media devices. (${name}: ${message.substring(0, 100)})`);
       }
       setStep('error');
     }
@@ -286,12 +324,20 @@ function PermissionScreen({ config, onReady }) {
             <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-white mb-2">Permission Error</h2>
             <p className="text-slate-400 text-sm mb-6">{error}</p>
-            <button
-              onClick={requestPermissions}
-              className="px-6 py-3 rounded-xl bg-indigo-500 text-white font-semibold hover:bg-indigo-600 transition-all"
-            >
-              Try Again
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={requestPermissions}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold hover:from-indigo-600 hover:to-purple-600 transition-all shadow-lg shadow-indigo-500/20"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => onReady(null)}
+                className="w-full py-3 rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 border border-white/10 transition-all text-sm"
+              >
+                Continue without camera & mic (type answers)
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -326,6 +372,7 @@ function InterviewRoom({ config, stream, onComplete }) {
   const startTimeRef = useRef(Date.now());
   const speechDataRef = useRef({ duration: 0, transcript: '' });
   const totalDurationRef = useRef(0);
+  const shouldListenRef = useRef(false);
 
   // Initialize camera
   useEffect(() => {
@@ -398,7 +445,7 @@ function InterviewRoom({ config, stream, onComplete }) {
     synthRef.current.speak(utterance);
   }, []);
 
-  // ── Speech-to-Text (fixed: abort previous before starting new) ──
+  // ── Speech-to-Text ──
   const startListening = useCallback(() => {
     // Abort any existing recognition first
     if (recognitionRef.current) {
@@ -440,35 +487,48 @@ function InterviewRoom({ config, stream, onComplete }) {
     recognition.onerror = (event) => {
       console.warn('Speech recognition error:', event.error);
       if (event.error === 'no-speech') {
-        try { recognition.stop(); } catch (_) {}
-        setTimeout(() => {
-          try { recognition.start(); } catch (_) {}
-        }, 100);
+        // Browser fires both onerror('no-speech') AND onend — 
+        // onend handles the restart, so nothing to do here.
       } else if (event.error === 'aborted') {
-        // Normal abort, ignore
+        // Normal abort from stopListening() or abort() — ignore
       } else {
-        // Other errors - try restarting after a delay
-        console.warn('Restarting speech recognition after error');
-        setTimeout(() => {
-          try { recognition.start(); } catch (_) {}
-        }, 500);
+        // Other errors (audio-capture, network, not-allowed, etc.)
+        // — restart after a delay if still supposed to listen
+        if (shouldListenRef.current) {
+          setTimeout(() => {
+            try { recognition.start(); } catch (_) {}
+          }, 500);
+        }
       }
     };
 
-    // Note: onend not needed because continuous:true keeps session alive.
-    // The no-speech error handler below covers timeout restarts.
-    // Removing onend prevents mute-button infinite restart loop.
+    // CRITICAL FIX: Browser closes the speech recognition session after periods
+    // of silence (even with continuous:true). The onend handler automatically
+    // restarts it so the mic stays live throughout the interview.
+    // The `recognitionRef.current === recognition` guard prevents stale
+    // recognition instances (from a previous `startListening` call) from
+    // restarting after a new one has already been created.
+    recognition.onend = () => {
+      if (shouldListenRef.current && recognitionRef.current === recognition) {
+        setTimeout(() => {
+          try { recognition.start(); } catch (_) {}
+        }, 100);
+      }
+    };
 
+    shouldListenRef.current = true;
     recognitionRef.current = recognition;
     try {
       recognition.start();
       setIsListening(true);
     } catch (err) {
+      shouldListenRef.current = false;
       console.warn('Failed to start recognition:', err);
     }
   }, []);
 
   const stopListening = useCallback(() => {
+    shouldListenRef.current = false;
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
