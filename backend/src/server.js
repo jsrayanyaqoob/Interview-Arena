@@ -28,9 +28,28 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 
-// CORS
+// CORS - Allow multiple origins
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const EXTRA_ORIGINS = (process.env.EXTRA_ORIGINS || '').split(',').filter(Boolean);
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  FRONTEND_URL,
+  ...EXTRA_ORIGINS,
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    // Exact match against allowed origins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any private-network origin for local development
+    if (/^https?:\/\/(10\.|172\.(1[6-9]|2\d|3[01])|192\.168\.|127\.|localhost)/.test(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

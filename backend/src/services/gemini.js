@@ -4,8 +4,8 @@ const { logger } = require('../utils/logger');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Use flash model for speed, pro model for complex evaluation
-const flashModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-const proModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+const flashModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+const proModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
 /**
  * Clean JSON from Gemini response (handle markdown code blocks)
