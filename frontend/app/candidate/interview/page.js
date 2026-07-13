@@ -301,6 +301,22 @@ function PermissionScreen({ config, onReady }) {
                   'Grant Access & Start'
                 )}
               </button>
+
+              {/* Divider */}
+              <div className="relative flex items-center gap-3 py-1">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-xs text-slate-500 font-medium">or</span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+
+              {/* Skip — type answers instead */}
+              <button
+                onClick={() => onReady(null)}
+                className="w-full py-3 rounded-xl bg-white/5 text-slate-300 font-medium hover:bg-white/10 hover:text-white border border-white/10 transition-all text-sm flex items-center justify-center gap-2"
+              >
+                <Pencil className="w-4 h-4" />
+                Skip, I'll type my answers
+              </button>
             </div>
           </>
         ) : step === 'countdown' ? (
