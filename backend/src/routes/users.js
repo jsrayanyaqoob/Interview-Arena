@@ -2,9 +2,22 @@ const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { authenticate, authorize } = require('../middleware/auth');
 
-// ========== PUBLIC USER DIRECTORY ==========
-// No auth required — returns basic public profile info
+const ADMIN_EMAIL = 'rayanyaqoob83@gmail.com';
+
+// ========== ADMIN-ONLY USER DIRECTORY ==========
+// Require authentication + ADMIN role + specific email check
+router.use(authenticate);
+router.use(authorize('ADMIN'));
+
+// Only the designated admin email can access user directory
+router.use((req, res, next) => {
+  if (req.user.email !== ADMIN_EMAIL) {
+    return res.status(403).json({ error: 'Access denied. Admin privileges restricted.' });
+  }
+  next();
+});
 
 router.get('/', async (req, res, next) => {
   try {
@@ -66,7 +79,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// ========== PUBLIC USER DETAIL ==========
+// ========== ADMIN-ONLY USER DETAIL ==========
 router.get('/:id', async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
@@ -93,7 +106,6 @@ router.get('/:id', async (req, res, next) => {
             company: true,
             position: true,
             bio: true,
-            _count: { select: { interviews: true } },
           },
         },
         _count: {

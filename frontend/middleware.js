@@ -21,7 +21,9 @@ export function middleware(request) {
   // Check if it's a protected route
   const isProtected = pathname.startsWith('/candidate') ||
     pathname.startsWith('/recruiter') ||
-    pathname.startsWith('/admin');
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/users') ||
+    pathname.startsWith('/settings');
 
   if (isProtected) {
     const token = request.cookies.get('token')?.value;
