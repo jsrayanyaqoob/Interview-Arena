@@ -84,7 +84,7 @@ jobs:
 
       - name: Build AMI with Packer
         run: |
-          packer init packer/safepassage.pkr.hcl
+          packer init packer/app.pkr.hcl
           packer build -color=false packer/safepassage.pkr.hcl
 
       - name: Extract new AMI id
