@@ -54,14 +54,6 @@ jobs:
           npm ci --legacy-peer-deps
           npm run build
 
-      - name: Assemble app bundle
-        run: |
-          set -euxo pipefail
-          rm -rf stage && mkdir -p stage/backend stage/frontend-dist
-          rsync -a --exclude 'node_modules' --exclude '.env' --exclude '*.log' --exclude 'uploads/*' backend/ stage/backend/
-          cp -r frontend/dist/. stage/frontend-dist/
-          tar -czf app.tar.gz -C stage .
-
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
         with:
