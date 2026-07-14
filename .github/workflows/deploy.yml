@@ -82,14 +82,10 @@ jobs:
         with:
           version: latest
 
-      - name: Packer Init
-        run: packer init packer/app.pkr.hcl
-
-      - name: Packer Validate
-        run: packer validate packer/app.pkr.hcl
-
-      - name: Packer Build
-        run: packer build packer/app.pkr.hcl
+      - name: Build AMI with Packer
+        run: |
+          packer init packer/app.pkr.hcl
+          packer build -color=false packer/app.pkr.hcl
 
       - name: Extract new AMI id
         id: get_ami
