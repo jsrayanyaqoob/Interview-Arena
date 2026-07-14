@@ -85,7 +85,7 @@ jobs:
       - name: Build AMI with Packer
         run: |
           packer init packer/app.pkr.hcl
-          packer build -color=false packer/safepassage.pkr.hcl
+          packer build -color=false packer/app.pkr.hcl
 
       - name: Extract new AMI id
         id: get_ami
@@ -115,7 +115,7 @@ jobs:
           echo "Launch template: $LT_ID   new AMI: $AMI_ID"
 
           # Baked AMI is self-contained; boot just re-fetches secrets + starts services.
-          UD=$(printf '#!/bin/bash\nsystemctl restart safepassage-env safepassage nginx\n' | base64 -w0)
+          UD=$(printf '#!/bin/bash\nsystemctl restart interviewarena-env interviewarena nginx\n' | base64 -w0)
 
           NEWVER=$(aws ec2 create-launch-template-version \
             --launch-template-id "$LT_ID" \
