@@ -81,7 +81,7 @@ export default function CandidateDashboard() {
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-semibold text-sm bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all duration-300"
             >
               <PlayCircle className="w-4 h-4" />
-              Start New Interview
+              Begin Interview
             </Link>
           </div>
         </div>
