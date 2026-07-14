@@ -70,12 +70,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download bundle artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-bundle
-          path: .
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
