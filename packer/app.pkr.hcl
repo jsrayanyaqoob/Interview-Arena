@@ -43,4 +43,8 @@ build {
       "echo '<h1>Hello from Packer-built AMI</h1>' | sudo tee /usr/share/nginx/html/index.html"
     ]
   }
+
+  post-processor "manifest" {
+    output = "packer-manifest.json"
+  }
 }
