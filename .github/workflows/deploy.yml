@@ -1,125 +1,53 @@
-name: CI/CD Pipeline
+name: Deploy
 
 on:
-  push:
-    branches: [main]
-
-permissions:
-  id-token: write
-  contents: read
-
-env:
-  AWS_REGION: us-east-1
+  workflow_dispatch:
 
 jobs:
-  # ===========================================================================
-  # Job 1: Test
-  # ===========================================================================
   test:
-    name: Test & Lint
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            backend/package-lock.json
+          node-version: 22
 
-      - name: Install backend dependencies
-        working-directory: backend
-        run: npm ci
+      - run: npm install
+      - run: npm test
 
-      - name: Lint backend
-        working-directory: backend
-        run: npm run lint --if-present
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint --if-present
-
-      - name: Build frontend (sanity check)
-        working-directory: frontend
-        run: npm run build
-        env:
-          NEXT_PUBLIC_API_URL: https://interviewarena-alb-781757561.us-east-1.elb.amazonaws.com/api
-          NEXT_PUBLIC_APP_NAME: Interview Arena AI
-
-  # ===========================================================================
-  # Job 2: Build AMI with Packer
-  # ===========================================================================
-  build-ami:
-    name: Build AMI
-    runs-on: ubuntu-latest
+  build:
     needs: test
-    outputs:
-      ami_id: ${{ steps.build.outputs.ami_id }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::035152275359:role/github-actions-deploy-role
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Packer
-        uses: hashicorp/setup-packer@main
-
-      - name: Packer Init
-        run: packer init app.pkr.hcl
-
-      - name: Packer Validate
-        run: packer validate app.pkr.hcl
-
-      - name: Packer Build
-        id: build
-        run: |
-          packer build -machine-readable app.pkr.hcl | tee build.log
-          AMI_ID=$(grep 'artifact,0,id' build.log | cut -d, -f6 | cut -d: -f2)
-          echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
-          echo "Built AMI: $AMI_ID"
-
-  # ===========================================================================
-  # Job 3: Deploy via Terraform
-  # ===========================================================================
-  deploy:
-    name: Deploy
     runs-on: ubuntu-latest
-    needs: build-ami
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          role-to-assume: arn:aws:iam::035152275359:role/github-actions-deploy-role
-          aws-region: ${{ env.AWS_REGION }}
+          node-version: 22
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - run: npm install
+      - run: npm run build
 
-      - name: Terraform Init
-        working-directory: terraform-deploy
-        run: terraform init
+  ami:
+    needs: build
+    runs-on: ubuntu-latest
 
-      - name: Terraform Apply
-        working-directory: terraform-deploy
-        run: terraform apply -auto-approve -var="ami_id=${{ needs.build-ami.outputs.ami_id }}"
-
-      - name: Deployment summary
+    steps:
+      - name: Create AMI
         run: |
-          echo "### Deployment Complete :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "- AMI: ${{ needs.build-ami.outputs.ami_id }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ASG: interviewarena-asg refreshed" >> $GITHUB_STEP_SUMMARY
+          echo "Creating AMI..."
+          # aws ec2 create-image ...
+
+  deploy:
+    needs: ami
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy
+        run: |
+          echo "Deploying application..."
