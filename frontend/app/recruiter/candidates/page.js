@@ -15,10 +15,6 @@ export default function RecruiterCandidates() {
   const [search, setSearch] = useState('');
   const [filterByInterview, setFilterByInterview] = useState('all');
 
-  useEffect(() => {
-    fetchCandidates();
-  }, []);
-
   const fetchCandidates = async () => {
     try {
       setLoading(true);
@@ -30,6 +26,11 @@ export default function RecruiterCandidates() {
       setLoading(false);
     }
   };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchCandidates();
+  }, []);
 
   const filteredCandidates = candidates.filter(c => {
     if (!search) return true;

@@ -80,14 +80,6 @@ export default function SettingsPage() {
     }
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950 flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-      </div>
-    );
-  }
-
   const tabs = [
     { id: 'account', label: 'Account', icon: User },
     { id: 'password', label: 'Password', icon: Lock },
@@ -95,6 +87,14 @@ export default function SettingsPage() {
   ];
 
   const [activeTab, setActiveTab] = useState('account');
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950 flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950 p-5 lg:p-10">

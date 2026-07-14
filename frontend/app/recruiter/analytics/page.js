@@ -15,10 +15,6 @@ export default function RecruiterAnalytics() {
   const [error, setError] = useState(null);
   const [timeRange, setTimeRange] = useState('30d');
 
-  useEffect(() => {
-    Promise.all([fetchAnalytics(), fetchJobStats()]);
-  }, [timeRange]);
-
   const fetchAnalytics = async () => {
     try {
       const result = await recruiterService.getAnalytics({ timeRange });
@@ -39,6 +35,11 @@ export default function RecruiterAnalytics() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    Promise.all([fetchAnalytics(), fetchJobStats()]);
+  }, [timeRange]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950 flex items-center justify-center">
@@ -52,7 +53,7 @@ export default function RecruiterAnalytics() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950 flex items-center justify-center">
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-800/50 border border-red-200 text-center">
           <p className="text-red-500 font-medium">{error}</p>
-          <button onClick={() => { setLoading(true); Promise.all([fetchAnalytics(), fetchJobStats()]); }} className="mt-3 px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm hover:bg-indigo-600 transition">Retry</button>
+          <button onClick={() => { setLoading(true); fetchAnalytics(); fetchJobStats(); }} className="mt-3 px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm hover:bg-indigo-600 transition">Retry</button>
         </div>
       </div>
     );

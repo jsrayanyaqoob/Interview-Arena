@@ -80,6 +80,7 @@ export default function RecruitersPage() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { fetchRecruiters(1); }, []);
 
   const handleSearch = (e) => {

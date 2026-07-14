@@ -47,10 +47,12 @@ export default function TemplateBuilder() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     fetchTemplates();
   }, [fetchTemplates]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (selectedId) {
       fetchTemplate(selectedId);

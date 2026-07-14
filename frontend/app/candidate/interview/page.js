@@ -305,7 +305,7 @@ function PermissionScreen({ config, onReady }) {
               {/* Divider */}
               <div className="relative flex items-center gap-3 py-1">
                 <div className="flex-1 h-px bg-white/10" />
-                <span className="text-xs text-slate-500 font-medium">or</span>
+                <span className="text-xs text-slate-500 font-medium">{'or'}</span>
                 <div className="flex-1 h-px bg-white/10" />
               </div>
 
@@ -315,7 +315,7 @@ function PermissionScreen({ config, onReady }) {
                 className="w-full py-3 rounded-xl bg-white/5 text-slate-300 font-medium hover:bg-white/10 hover:text-white border border-white/10 transition-all text-sm flex items-center justify-center gap-2"
               >
                 <Pencil className="w-4 h-4" />
-                Skip, I'll type my answers
+                {`Skip, I'll type my answers`}
               </button>
             </div>
           </>
@@ -385,7 +385,7 @@ function InterviewRoom({ config, stream, onComplete }) {
   const synthRef = useRef(null);
   const transcriptRef = useRef('');
   const timerRef = useRef(null);
-  const startTimeRef = useRef(Date.now());
+  const startTimeRef = useRef(null);
   const speechDataRef = useRef({ duration: 0, transcript: '' });
   const totalDurationRef = useRef(0);
   const shouldListenRef = useRef(false);
@@ -397,17 +397,7 @@ function InterviewRoom({ config, stream, onComplete }) {
     }
   }, [stream, question, result]);
 
-  // Start interview via API on mount
-  useEffect(() => {
-    startInterviewViaAPI();
-    return () => {
-      if (recognitionRef.current) recognitionRef.current.abort();
-      if (synthRef.current) synthRef.current.cancel();
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  const startInterviewViaAPI = async () => {
+  const startInterviewViaAPI = useCallback(async () => {
     try {
       const data = await interviewService.startInterview(config);
       interviewIdRef.current = data.interview.id;
@@ -441,7 +431,17 @@ function InterviewRoom({ config, stream, onComplete }) {
       setInitError(err.response?.data?.error || err.message || 'Failed to connect to AI. Please try again.');
       setInitializing(false);
     }
-  };
+  }, []);
+
+  // Start interview via API on mount
+  useEffect(() => {
+    startInterviewViaAPI();
+    return () => {
+      if (recognitionRef.current) recognitionRef.current.abort();
+      if (synthRef.current) synthRef.current.cancel();
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [startInterviewViaAPI]);
 
   // ── Text-to-Speech ──
   const speakText = useCallback((text) => {

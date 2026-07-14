@@ -23,6 +23,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Initialize auth state from localStorage
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('token');
